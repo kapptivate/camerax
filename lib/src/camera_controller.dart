@@ -51,6 +51,9 @@ abstract class CameraController {
   /// Switch the torch's state.
   void torch();
 
+  /// Switch the torch's state.
+  void setTorch(TorchState _torchState);
+
   /// Release the resources of the camera.
   void dispose();
 
@@ -200,6 +203,14 @@ class _CameraController implements CameraController {
     var state = torchState.value == TorchState.off ? TorchState.on : TorchState.off;
     method.invokeMethod('torch', state.index);
   }
+
+  void setTorch(TorchState _torchState) {
+    ensure('torch');
+    print('setTorch $_torchState');
+    method.invokeMethod('torch', _torchState.index);
+  }
+
+
 
   @override
   void dispose() {

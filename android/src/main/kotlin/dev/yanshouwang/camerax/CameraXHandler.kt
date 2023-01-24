@@ -5,6 +5,10 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import android.view.Surface
@@ -20,9 +24,11 @@ import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.*
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
+
 
 enum class ResolutionPreset(val value: Int) {
     LOW(0), MEDIUM(1), HIGH(2), VERY_HIGH(3), ULTRA_HIGH(4), MAX(5);
@@ -60,6 +66,11 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         private const val CAMERA_ROTATION = "camera_photo_rotation"
         private const val CAMERA_CAPTURE_MODE = "camera_capture_mode"
         private const val CAMERA_FLASH_MODE = "camera_flash_mode"
+    }
+
+
+    init {
+        Log.v("CameraXHandler", "init")
     }
 
     private lateinit var imageCapture: ImageCapture
@@ -182,7 +193,31 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
             if (targetRotation != PhotoRotation.ROTATION_UNSET) {
                 imageCapture.targetRotation = targetRotation.value
+            } else {
+                val mappingRot = mapOf(
+                    0 to "ROTATION_0",
+                    1 to "ROTATION_90",
+                    2 to "ROTATION_180",
+                    3 to "ROTATION_270"
+                )
+
+                val mappingOrientation = mapOf(
+                    0 to "ORIENTATION_UNDEFINED",
+                    1 to "ORIENTATION_PORTRAIT",
+                    2 to "ORIENTATION_LANDSCAPE"
+                )
+
+                val deviceNaturalOrientation = getDeviceNaturalOrientation(activity)
+
+                Log.v("CameraXHandler", "Device natural orientation=${mappingRot.get(deviceNaturalOrientation)}")
+                Log.v("CameraXHandler", "Device default orientation=${mappingOrientation.get(getDeviceDefaultOrientation(activity))}")
+
+                imageCapture.targetRotation = Surface.ROTATION_0
             }
+
+
+
+
             initCamera(cameraProvider, executor, selector, imageCapture)
         }
     }
@@ -237,6 +272,8 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             request.provideSurface(surface, executor, { })
         }
 
+        cameraProvider.unbindAll()    // Unbind use cases before rebinding
+
         val preview = Preview.Builder().build().apply { setSurfaceProvider(surfaceProvider) }
         camera = cameraProvider.bindToLifecycle(
             activity as LifecycleOwner,
@@ -263,6 +300,32 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
     private fun onImageSavedCallback(result: MethodChannel.Result) =
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                val sourceBitmap = MediaStore.Images.Media.getBitmap(activity.contentResolver, outputFileResults.savedUri)
+
+                val exif = ExifInterface(outputFileResults.savedUri?.path!!)
+                val rotation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+
+                val rotationInDegrees = when (rotation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    ExifInterface.ORIENTATION_TRANSVERSE -> -90
+                    ExifInterface.ORIENTATION_TRANSPOSE -> -270
+                    else -> 0
+                }
+                val matrix = Matrix().apply {
+                    if (rotation != 0) preRotate(rotationInDegrees.toFloat())
+                }
+
+                val rotatedBitmap =
+                    Bitmap.createBitmap(sourceBitmap, 0, 0, sourceBitmap.width, sourceBitmap.height, matrix, true)
+
+                rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, FileOutputStream(outputFileResults.savedUri?.path))
+
+                sourceBitmap.recycle()
+                rotatedBitmap.recycle()
+
+
                 result.success(mapOf("path" to outputFileResults.savedUri?.path))
             }
 
@@ -297,7 +360,10 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
     private fun torchNative(call: MethodCall, result: MethodChannel.Result) {
         val state = call.arguments == 1
-        camera!!.cameraControl.enableTorch(state)
+        Log.v("CameraXHandler", "torchNative state=$state cameraIsNull=${camera==null}")
+        if (camera != null) {
+            camera!!.cameraControl.enableTorch(state)
+        }
         result.success(null)
     }
 
@@ -312,14 +378,41 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             1 -> ImageCapture.FLASH_MODE_ON
             else -> ImageCapture.FLASH_MODE_AUTO
         }
+        imageCapture.flashMode = flashMode
+
+        Log.v("CameraXHandler", "imageCapture.flashMode=${imageCapture.flashMode}")
         result.success(null)
     }
 
+    private var alreadyStopped: Boolean = false
     private fun stopNative(result: MethodChannel.Result) {
+        Log.v("CameraXHandler", "stopNative")
+        if (alreadyStopped) {
+            Log.v("CameraXHandler", "stopNative alreadyStopped")
+            result.success(null)
+            return;
+        }
+        alreadyStopped = true
+
+
         val owner = activity as LifecycleOwner
-        camera!!.cameraInfo.torchState.removeObservers(owner)
-        cameraProvider!!.unbindAll()
-        textureEntry!!.release()
+        if (camera != null) {
+            camera!!.cameraInfo.torchState.removeObservers(owner)
+        } else {
+            Log.v("CameraXHandler", "stopNative camera is null")
+        }
+
+        if (cameraProvider != null) {
+            cameraProvider!!.unbindAll()
+        } else {
+            Log.v("CameraXHandler", "stopNative cameraProvider is null")
+        }
+
+        if (textureEntry != null) {
+            textureEntry!!.release()
+        } else {
+            Log.v("CameraXHandler", "stopNative textureEntry is null")
+        }
 
         analyzeMode = AnalyzeMode.NONE
         camera = null
@@ -394,3 +487,8 @@ annotation class AnalyzeMode {
         const val BARCODE = 1
     }
 }
+
+/*
+    at dev.yanshouwang.camerax.CameraXHandler.stopNative(CameraXHandler.kt:321)
+    at dev.yanshouwang.camerax.CameraXHandler.onMethodCall(CameraXHandler.kt:89)
+ */

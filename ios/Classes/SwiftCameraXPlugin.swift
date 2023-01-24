@@ -253,6 +253,10 @@ public class SwiftCameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, 
                 
                 let connection = AVCaptureConnection(inputPorts: input.ports, output: videoOutput)
                 connection.videoOrientation = videoOrientation
+                if captureDevice.position == .front && connection.isVideoMirroringSupported {
+                  connection.automaticallyAdjustsVideoMirroring = false
+                  connection.isVideoMirrored = true
+                }
                 captureSession.addConnection(connection)
                 
                 photoOutput = AVCapturePhotoOutput()
