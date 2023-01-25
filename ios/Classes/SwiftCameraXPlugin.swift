@@ -1,7 +1,5 @@
 import AVFoundation
 import Flutter
-import MLKitVision
-import MLKitBarcodeScanning
 import UIKit
 
 enum ResolutionPreset : Int {
@@ -124,22 +122,7 @@ public class SwiftCameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, 
         
         switch analyzeMode {
         case 1: // barcode
-            if analyzing {
-                break
-            }
-            analyzing = true
-            let buffer = CMSampleBufferGetImageBuffer(sampleBuffer)
-            let image = VisionImage(image: buffer!.image)
-            let scanner = BarcodeScanner.barcodeScanner()
-            scanner.process(image) { [self] barcodes, error in
-                if error == nil && barcodes != nil {
-                    for barcode in barcodes! {
-                        let event: [String: Any?] = ["name": "barcode", "data": barcode.data]
-                        sink?(event)
-                    }
-                }
-                analyzing = false
-            }
+            break
         default: // none
             break
         }
