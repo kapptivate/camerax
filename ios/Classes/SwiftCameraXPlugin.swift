@@ -1,4 +1,5 @@
 import AVFoundation
+import Foundation
 import Flutter
 import UIKit
 
@@ -214,7 +215,9 @@ public class SwiftCameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, 
             }
         }
         captureSession.commitConfiguration()
-        captureSession.startRunning()
+        DispatchQueue.global(qos: .background).async {
+            self.captureSession.startRunning()
+        }
     }
     
     private func setupPictureCapturing(_ result: @escaping FlutterResult) {
@@ -249,7 +252,9 @@ public class SwiftCameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, 
                     }
                 }
                 captureSession.commitConfiguration()
-                captureSession.startRunning()
+                DispatchQueue.global(qos: .background).async {
+                    self.captureSession.startRunning()
+                }
             } catch {
                 error.throwNative(result)
             }
