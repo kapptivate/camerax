@@ -19,8 +19,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.*
 import io.flutter.view.TextureRegistry
 import java.io.File
@@ -161,7 +159,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             val selector = CameraSelector.Builder().requireLensFacing(facingIndex).build()
             when (CameraType.values()[cameraType]) {
                 CameraType.PICTURE -> prepareCapture(result, selector)
-                CameraType.BARCODE -> prepareBarCode(result, selector)
                 else -> result.error(
                     "Unsupported camera type",
                     "CameraType must be one of CameraType options",
@@ -219,26 +216,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
 
             initCamera(cameraProvider, executor, selector, imageCapture)
-        }
-    }
-
-    @ExperimentalGetImage
-    private fun prepareBarCode(
-        result: MethodChannel.Result,
-        camSelector: CameraSelector
-    ) {
-        execute(result, camSelector) { cameraProvider, selector, executor ->
-            val analyzer = barcodeAnalyzer()
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build().apply { setAnalyzer(executor, analyzer) }
-
-            val preview = initCamera(cameraProvider, executor, selector, analysis)
-            camera?.cameraInfo?.torchState?.observe(activity as LifecycleOwner, { state ->
-                val event = mapOf("name" to "torchState", "data" to state)
-                sink?.success(event)
-            })
-            preview
         }
     }
 
@@ -420,30 +397,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         cameraProvider = null
 
         result.success(null)
-    }
-
-    @ExperimentalGetImage
-    private fun barcodeAnalyzer() = ImageAnalysis.Analyzer { imageProxy -> // YUV_420_888 format
-        when (analyzeMode) {
-            AnalyzeMode.BARCODE -> {
-                val mediaImage = imageProxy.image ?: return@Analyzer
-                val inputImage = InputImage.fromMediaImage(
-                    mediaImage,
-                    imageProxy.imageInfo.rotationDegrees
-                )
-                val scanner = BarcodeScanning.getClient()
-                scanner.process(inputImage)
-                    .addOnSuccessListener { barcodes ->
-                        for (barcode in barcodes) {
-                            val event = mapOf("name" to "barcode", "data" to barcode.data)
-                            sink?.success(event)
-                        }
-                    }
-                    .addOnFailureListener { e -> Log.e(TAG, e.message, e) }
-                    .addOnCompleteListener { imageProxy.close() }
-            }
-            else -> imageProxy.close()
-        }
     }
 
     /**
