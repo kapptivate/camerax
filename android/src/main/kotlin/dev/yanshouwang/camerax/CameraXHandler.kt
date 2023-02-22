@@ -7,13 +7,21 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
 import android.media.ExifInterface
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import android.view.Surface
 import androidx.annotation.IntDef
 import androidx.annotation.NonNull
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
@@ -72,6 +80,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
     }
 
     private lateinit var imageCapture: ImageCapture
+    private lateinit var camera2InterOp: Camera2Interop.Extender<ImageCapture>
     private var sink: EventChannel.EventSink? = null
     private var listener: PluginRegistry.RequestPermissionsResultListener? = null
 
@@ -180,13 +189,16 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         }
     }
 
+    @SuppressLint("RestrictedApi", "UnsafeOptInUsageError")
     private fun prepareCapture(result: MethodChannel.Result, camSelector: CameraSelector) {
         execute(result, camSelector) { cameraProvider, selector, executor ->
-            imageCapture = ImageCapture.Builder()
+            val imageCaptureBuilder = ImageCapture.Builder()
                 .setCaptureMode(captureMode)
                 .setFlashMode(flashMode)
                 .setTargetResolution(targetResolution)
-                .build()
+
+            camera2InterOp = Camera2Interop.Extender(imageCaptureBuilder)
+            imageCapture = imageCaptureBuilder.build()
 
             if (targetRotation != PhotoRotation.ROTATION_UNSET) {
                 imageCapture.targetRotation = targetRotation.value
@@ -335,11 +347,24 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         )
     }
 
+    @SuppressLint("UnsafeOptInUsageError", "RestrictedApi")
     private fun torchNative(call: MethodCall, result: MethodChannel.Result) {
         val state = call.arguments == 1
-        Log.v("CameraXHandler", "torchNative state=$state cameraIsNull=${camera==null}")
         if (camera != null) {
-            camera!!.cameraControl.enableTorch(state)
+            if (camera!!.cameraInfo.hasFlashUnit()) {
+                camera!!.cameraControl.enableTorch(state)
+            } else {
+                // Enable torch with old method
+                val builder = CaptureRequestOptions.Builder()
+
+                if (state) {
+                    builder.setCaptureRequestOption(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
+                } else {
+                    builder.setCaptureRequestOption(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                }
+
+                Camera2CameraControl.from(imageCapture.camera!!.cameraControl).captureRequestOptions = builder.build()
+            }
         }
         result.success(null)
     }
