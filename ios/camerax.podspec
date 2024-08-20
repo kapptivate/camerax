@@ -5,13 +5,11 @@
 Pod::Spec.new do |s|
   s.name             = 'camerax'
   s.version          = '0.0.1'
-  s.summary          = 'A new Flutter plugin project.'
-  s.description      = <<-DESC
-A new Flutter plugin project.
-                       DESC
-  s.homepage         = 'http://example.com'
+  s.summary          = 'A camera plugin for flutter.'
+  s.description      = 'A camera plugin for flutter, which use CameraX on Android, native API on iOS, supports preview and image analysis.'
+  s.homepage         = 'https://github.com/yanshouwang/camerax'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'yanshouwang' => 'yanshouwang@outlook.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'

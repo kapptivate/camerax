@@ -3,7 +3,6 @@ package dev.yanshouwang.camerax
 import android.graphics.Point
 import androidx.camera.core.Camera
 import androidx.camera.core.ImageProxy
-import io.flutter.BuildConfig
 
 enum class CameraType {
     PICTURE, BARCODE
@@ -104,3 +103,7 @@ val ImageProxy.u: ImageProxy.PlaneProxy
 
 val ImageProxy.v: ImageProxy.PlaneProxy
     get() = planes[2]
+
+val Point.data: Map<String, Double>
+    get() = mapOf("x" to x.toDouble(), "y" to y.toDouble())
+

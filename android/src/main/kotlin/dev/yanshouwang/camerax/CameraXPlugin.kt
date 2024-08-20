@@ -1,12 +1,18 @@
 package dev.yanshouwang.camerax
 
+import android.annotation.SuppressLint
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import io.flutter.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.PluginRegistry
 
 /** CameraXPlugin */
+@ExperimentalCamera2Interop
 class CameraXPlugin : FlutterPlugin, ActivityAware {
     private var flutter: FlutterPlugin.FlutterPluginBinding? = null
     private var activity: ActivityPluginBinding? = null
@@ -36,8 +42,14 @@ class CameraXPlugin : FlutterPlugin, ActivityAware {
         onAttachedToActivity(binding)
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     override fun onDetachedFromActivity() {
-        activity!!.removeRequestPermissionsResultListener(handler!!)
+        Log.v("CameraXPlugin", "onDetachedFromActivity")
+        // force release camera if dart is not able to do this before onDetachedFromActivity
+        // otherwise after onDetachedFromActivity dart is not able to send stop because handler, method, event is set to null
+        var h: CameraXHandler = handler!!
+        h.onMethodCall(MethodCall("stop", null), FakeResult());
+        activity!!.removeRequestPermissionsResultListener(handler!! as PluginRegistry.RequestPermissionsResultListener)
         event!!.setStreamHandler(null)
         method!!.setMethodCallHandler(null)
         event = null
@@ -47,6 +59,20 @@ class CameraXPlugin : FlutterPlugin, ActivityAware {
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        Log.v("CameraXPlugin", "onDetachedFromActivityForConfigChanges")
         onDetachedFromActivity()
     }
 }
+
+class FakeResult : MethodChannel.Result {
+    override fun success(p0: Any?) {
+        Log.v("FakeResult", "success")
+    }
+
+    override fun error(p0: String, p1: String?, p2: Any?) {
+    }
+
+    override fun notImplemented() {
+    }
+}
+

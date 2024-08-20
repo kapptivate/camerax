@@ -43,13 +43,17 @@ abstract class CameraController {
     PhotoRotation rotation = PhotoRotation.rotationUnset,
     FlashMode? flashMode,
   }) =>
-      _CameraController(facing, cameraType, resolutionPreset, rotation, captureMode, flashMode);
+      _CameraController(facing, cameraType, resolutionPreset, rotation,
+          captureMode, flashMode);
 
   /// Start the camera asynchronously.
   Future<void> startAsync();
 
   /// Switch the torch's state.
   void torch();
+
+  /// Switch the torch's state.
+  void setTorch(TorchState _torchState);
 
   /// Release the resources of the camera.
   void dispose();
@@ -62,8 +66,10 @@ abstract class CameraController {
 }
 
 class _CameraController implements CameraController {
-  static const MethodChannel method = MethodChannel('yanshouwang.dev/camerax/method');
-  static const EventChannel event = EventChannel('yanshouwang.dev/camerax/event');
+  static const MethodChannel method =
+      MethodChannel('yanshouwang.dev/camerax/method');
+  static const EventChannel event =
+      EventChannel('yanshouwang.dev/camerax/event');
 
   static const String CAMERA_INDEX = 'camera_index';
   static const String CAMERA_TYPE = 'camera_type';
@@ -133,7 +139,8 @@ class _CameraController implements CameraController {
       onCancel: () => tryAnalyze(analyze_none),
     );
     // Listen event handler.
-    subscription = event.receiveBroadcastStream().listen((data) => handleEvent(data));
+    subscription =
+        event.receiveBroadcastStream().listen((data) => handleEvent(data));
   }
 
   void handleEvent(Map<dynamic, dynamic> event) {
@@ -170,7 +177,8 @@ class _CameraController implements CameraController {
       state = result ? authorized : denied;
     }
     if (state != authorized) {
-      throw CameraException('Camera access denied', 'Unauthorized access to camera, check app permission settings');
+      throw CameraException('Camera access denied',
+          'Unauthorized access to camera, check app permission settings');
     }
     // Start camera.
     try {
@@ -197,8 +205,15 @@ class _CameraController implements CameraController {
     if (!torchable) {
       return;
     }
-    var state = torchState.value == TorchState.off ? TorchState.on : TorchState.off;
+    var state =
+        torchState.value == TorchState.off ? TorchState.on : TorchState.off;
     method.invokeMethod('torch', state.index);
+  }
+
+  void setTorch(TorchState _torchState) {
+    ensure('torch');
+    print('setTorch $_torchState');
+    method.invokeMethod('torch', _torchState.index);
   }
 
   @override
@@ -215,7 +230,8 @@ class _CameraController implements CameraController {
   void stop() => method.invokeMethod('stop');
 
   void ensure(String name) {
-    final message = 'CameraController.$name called after CameraController.dispose\n'
+    final message =
+        'CameraController.$name called after CameraController.dispose\n'
         'CameraController methods should not be used after calling dispose.';
     assert(hashCode == id, message);
   }

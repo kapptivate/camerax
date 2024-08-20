@@ -5,17 +5,29 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
+import android.media.ExifInterface
+import android.provider.MediaStore
 import android.util.Size
 import android.view.Surface
 import androidx.annotation.IntDef
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import io.flutter.Log
 import io.flutter.plugin.common.*
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
@@ -40,6 +52,7 @@ enum class PhotoRotation(val value: Int) {
     }
 }
 
+@ExperimentalCamera2Interop
 class CameraXHandler(private val activity: Activity, private val textureRegistry: TextureRegistry) :
     MethodChannel.MethodCallHandler, EventChannel.StreamHandler,
     PluginRegistry.RequestPermissionsResultListener {
@@ -58,7 +71,13 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         private const val CAMERA_FLASH_MODE = "camera_flash_mode"
     }
 
+
+    init {
+        Log.v("CameraXHandler", "init")
+    }
+
     private lateinit var imageCapture: ImageCapture
+    private lateinit var camera2InterOp: Camera2Interop.Extender<ImageCapture>
     private var sink: EventChannel.EventSink? = null
     private var listener: PluginRegistry.RequestPermissionsResultListener? = null
 
@@ -76,7 +95,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
     @ExperimentalGetImage
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        //return
         when (call.method) {
             "state" -> stateNative(result)
             "request" -> requestNative(result)
@@ -151,7 +169,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             val selector = CameraSelector.Builder().requireLensFacing(facingIndex).build()
             when (CameraType.values()[cameraType]) {
                 CameraType.PICTURE -> prepareCapture(result, selector)
-                CameraType.BARCODE -> prepareBarCode(result, selector)
                 else -> result.error(
                     "Unsupported camera type",
                     "CameraType must be one of CameraType options",
@@ -173,34 +190,41 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         }
     }
 
+    @SuppressLint("RestrictedApi", "UnsafeOptInUsageError")
     private fun prepareCapture(result: MethodChannel.Result, camSelector: CameraSelector) {
         execute(result, camSelector) { cameraProvider, selector, executor ->
-            imageCapture = ImageCapture.Builder()
+            val imageCaptureBuilder = ImageCapture.Builder()
                 .setCaptureMode(captureMode)
                 .setFlashMode(flashMode)
-                //.setTargetRotation(targetRotation.value)
-                .build()
-            initCamera(cameraProvider, executor, selector, imageCapture)
-        }
-    }
 
-    @ExperimentalGetImage
-    private fun prepareBarCode(
-        result: MethodChannel.Result,
-        camSelector: CameraSelector
-    ) {
-        execute(result, camSelector) { cameraProvider, selector, executor ->
-            val analyzer = barcodeAnalyzer()
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build().apply { setAnalyzer(executor, analyzer) }
+            camera2InterOp = Camera2Interop.Extender(imageCaptureBuilder)
+            imageCapture = imageCaptureBuilder.build()
 
-            val preview = initCamera(cameraProvider, executor, selector, analysis)
-            camera?.cameraInfo?.torchState?.observe(activity as LifecycleOwner) { state ->
-                val event = mapOf("name" to "torchState", "data" to state)
-                sink?.success(event)
+            if (targetRotation != PhotoRotation.ROTATION_UNSET) {
+                imageCapture.targetRotation = targetRotation.value
+            } else {
+                val mappingRot = mapOf(
+                    0 to "ROTATION_0",
+                    1 to "ROTATION_90",
+                    2 to "ROTATION_180",
+                    3 to "ROTATION_270"
+                )
+
+                val mappingOrientation = mapOf(
+                    0 to "ORIENTATION_UNDEFINED",
+                    1 to "ORIENTATION_PORTRAIT",
+                    2 to "ORIENTATION_LANDSCAPE"
+                )
+
+                val deviceNaturalOrientation = getDeviceNaturalOrientation(activity)
+
+                Log.v("CameraXHandler", "Device natural orientation=${mappingRot.get(deviceNaturalOrientation)}")
+                Log.v("CameraXHandler", "Device default orientation=${mappingOrientation.get(getDeviceDefaultOrientation(activity))}")
+
+                imageCapture.targetRotation = Surface.ROTATION_0
             }
-            preview
+
+            initCamera(cameraProvider, executor, selector, imageCapture)
         }
     }
 
@@ -234,6 +258,8 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             request.provideSurface(surface, executor, { })
         }
 
+        cameraProvider.unbindAll()    // Unbind use cases before rebinding
+
         val preview = Preview.Builder().build().apply { setSurfaceProvider(surfaceProvider) }
         camera = cameraProvider.bindToLifecycle(
             activity as LifecycleOwner,
@@ -260,6 +286,32 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
     private fun onImageSavedCallback(result: MethodChannel.Result) =
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                val sourceBitmap = MediaStore.Images.Media.getBitmap(activity.contentResolver, outputFileResults.savedUri)
+
+                val exif = ExifInterface(outputFileResults.savedUri?.path!!)
+                val rotation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+
+                val rotationInDegrees = when (rotation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    ExifInterface.ORIENTATION_TRANSVERSE -> -90
+                    ExifInterface.ORIENTATION_TRANSPOSE -> -270
+                    else -> 0
+                }
+                val matrix = Matrix().apply {
+                    if (rotation != 0) preRotate(rotationInDegrees.toFloat())
+                }
+
+                val rotatedBitmap =
+                    Bitmap.createBitmap(sourceBitmap, 0, 0, sourceBitmap.width, sourceBitmap.height, matrix, true)
+
+                rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, FileOutputStream(outputFileResults.savedUri?.path))
+
+                sourceBitmap.recycle()
+                rotatedBitmap.recycle()
+
+
                 result.success(mapOf("path" to outputFileResults.savedUri?.path))
             }
 
@@ -292,9 +344,25 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         )
     }
 
+    @SuppressLint("UnsafeOptInUsageError", "RestrictedApi")
     private fun torchNative(call: MethodCall, result: MethodChannel.Result) {
         val state = call.arguments == 1
-        camera!!.cameraControl.enableTorch(state)
+        if (camera != null) {
+            if (camera!!.cameraInfo.hasFlashUnit()) {
+                camera!!.cameraControl.enableTorch(state)
+            } else {
+                // Enable torch with old method
+                val builder = CaptureRequestOptions.Builder()
+
+                if (state) {
+                    builder.setCaptureRequestOption(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
+                } else {
+                    builder.setCaptureRequestOption(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                }
+
+                Camera2CameraControl.from(imageCapture.camera!!.cameraControl).captureRequestOptions = builder.build()
+            }
+        }
         result.success(null)
     }
 
@@ -309,14 +377,41 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             1 -> ImageCapture.FLASH_MODE_ON
             else -> ImageCapture.FLASH_MODE_AUTO
         }
+        imageCapture.flashMode = flashMode
+
+        Log.v("CameraXHandler", "imageCapture.flashMode=${imageCapture.flashMode}")
         result.success(null)
     }
 
+    private var alreadyStopped: Boolean = false
     private fun stopNative(result: MethodChannel.Result) {
+        Log.v("CameraXHandler", "stopNative")
+        if (alreadyStopped) {
+            Log.v("CameraXHandler", "stopNative alreadyStopped")
+            result.success(null)
+            return;
+        }
+        alreadyStopped = true
+
+
         val owner = activity as LifecycleOwner
-        camera!!.cameraInfo.torchState.removeObservers(owner)
-        cameraProvider!!.unbindAll()
-        textureEntry!!.release()
+        if (camera != null) {
+            camera!!.cameraInfo.torchState.removeObservers(owner)
+        } else {
+            Log.v("CameraXHandler", "stopNative camera is null")
+        }
+
+        if (cameraProvider != null) {
+            cameraProvider!!.unbindAll()
+        } else {
+            Log.v("CameraXHandler", "stopNative cameraProvider is null")
+        }
+
+        if (textureEntry != null) {
+            textureEntry!!.release()
+        } else {
+            Log.v("CameraXHandler", "stopNative textureEntry is null")
+        }
 
         analyzeMode = AnalyzeMode.NONE
         camera = null
@@ -324,11 +419,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         cameraProvider = null
 
         result.success(null)
-    }
-
-    @ExperimentalGetImage
-    private fun barcodeAnalyzer() = ImageAnalysis.Analyzer { imageProxy -> // YUV_420_888 format
-
     }
 
     /**
@@ -372,3 +462,8 @@ annotation class AnalyzeMode {
         const val BARCODE = 1
     }
 }
+
+/*
+    at dev.yanshouwang.camerax.CameraXHandler.stopNative(CameraXHandler.kt:321)
+    at dev.yanshouwang.camerax.CameraXHandler.onMethodCall(CameraXHandler.kt:89)
+ */
