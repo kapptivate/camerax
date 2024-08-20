@@ -3,19 +3,16 @@ package dev.yanshouwang.camerax
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
+import android.util.Size
 import android.view.Surface
 import androidx.annotation.IntDef
-import androidx.annotation.NonNull
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.mlkit.vision.MlKitAnalyzer
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.*
 import io.flutter.view.TextureRegistry
 import java.io.File
@@ -78,7 +75,8 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
     private var targetRotation = PhotoRotation.ROTATION_UNSET
 
     @ExperimentalGetImage
-    override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: MethodChannel.Result) {
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        //return
         when (call.method) {
             "state" -> stateNative(result)
             "request" -> requestNative(result)
@@ -180,12 +178,8 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             imageCapture = ImageCapture.Builder()
                 .setCaptureMode(captureMode)
                 .setFlashMode(flashMode)
-                .setTargetResolution(targetResolution)
+                //.setTargetRotation(targetRotation.value)
                 .build()
-
-            if (targetRotation != PhotoRotation.ROTATION_UNSET) {
-                imageCapture.targetRotation = targetRotation.value
-            }
             initCamera(cameraProvider, executor, selector, imageCapture)
         }
     }
@@ -202,10 +196,10 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
                 .build().apply { setAnalyzer(executor, analyzer) }
 
             val preview = initCamera(cameraProvider, executor, selector, analysis)
-            camera?.cameraInfo?.torchState?.observe(activity as LifecycleOwner, { state ->
+            camera?.cameraInfo?.torchState?.observe(activity as LifecycleOwner) { state ->
                 val event = mapOf("name" to "torchState", "data" to state)
                 sink?.success(event)
-            })
+            }
             preview
         }
     }
@@ -334,26 +328,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
     @ExperimentalGetImage
     private fun barcodeAnalyzer() = ImageAnalysis.Analyzer { imageProxy -> // YUV_420_888 format
-        when (analyzeMode) {
-            AnalyzeMode.BARCODE -> {
-                val mediaImage = imageProxy.image ?: return@Analyzer
-                val inputImage = InputImage.fromMediaImage(
-                    mediaImage,
-                    imageProxy.imageInfo.rotationDegrees
-                )
-                val scanner = BarcodeScanning.getClient()
-                scanner.process(inputImage)
-                    .addOnSuccessListener { barcodes ->
-                        for (barcode in barcodes) {
-                            val event = mapOf("name" to "barcode", "data" to barcode.data)
-                            sink?.success(event)
-                        }
-                    }
-                    .addOnFailureListener { e -> Log.e(TAG, e.message, e) }
-                    .addOnCompleteListener { imageProxy.close() }
-            }
-            else -> imageProxy.close()
-        }
+
     }
 
     /**

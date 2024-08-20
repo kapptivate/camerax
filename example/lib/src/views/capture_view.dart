@@ -1,5 +1,4 @@
 import 'package:camerax/camerax.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_bar.dart';
@@ -14,9 +13,9 @@ class CaptureView extends StatefulWidget {
 class _CaptureViewState extends State<CaptureView> {
   late final CameraController cameraController;
   final List<FlashModeIcon> flashModeIcons = [
-    FlashModeIcon(FlashMode.off, Icons.flash_off_rounded),
-    FlashModeIcon(FlashMode.on, Icons.flash_on_rounded),
-    FlashModeIcon(FlashMode.auto, Icons.flash_auto_rounded),
+    const FlashModeIcon(FlashMode.off, Icons.flash_off_rounded),
+    const FlashModeIcon(FlashMode.on, Icons.flash_on_rounded),
+    const FlashModeIcon(FlashMode.auto, Icons.flash_auto_rounded),
   ];
 
   late int flashModeIndex;
@@ -40,7 +39,7 @@ class _CaptureViewState extends State<CaptureView> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: ExampleAppBar(title: 'Capture'),
+      appBar: const ExampleAppBar(title: 'Capture'),
       body: Stack(
         children: [
           Container(color: Colors.blue),
@@ -62,7 +61,7 @@ class _CaptureViewState extends State<CaptureView> {
                     ),
                     SizedBox(height: 16.0),
                     TextButton.icon(
-                      label: Text('Flash ${describeEnum(cameraController.flashMode)}'),
+                      label: Text('Flash ${cameraController.flashMode.name}'),
                       onPressed: () => _switchFlashMode(),
                       icon: Icon(
                         flashModeIcons[flashModeIndex].iconData,
@@ -108,8 +107,10 @@ class _CaptureViewState extends State<CaptureView> {
 
   Future<void> _switchFlashMode() async {
     var nextModeIndex = _currentFlashModeIndex() + 1;
-    flashModeIndex = (nextModeIndex) >= flashModeIcons.length ? 0 : nextModeIndex;
-    await cameraController.setFlashMode(flashModeIcons[flashModeIndex].flashMode);
+    flashModeIndex =
+        (nextModeIndex) >= flashModeIcons.length ? 0 : nextModeIndex;
+    await cameraController
+        .setFlashMode(flashModeIcons[flashModeIndex].flashMode);
     setState(() {
       print('new flash index: $flashModeIndex');
     });
