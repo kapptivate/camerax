@@ -22,7 +22,7 @@ extension CVBuffer {
         let cgImage = CIContext().createCGImage(ciImage, from: ciImage.extent)
         return UIImage(cgImage: cgImage!)
     }
-
+    
     var image1: UIImage {
         // Lock the base address of the pixel buffer
         CVPixelBufferLockBaseAddress(self, CVPixelBufferLockFlags.readOnly)
@@ -66,8 +66,6 @@ extension UIDeviceOrientation {
     }
 }
 
-
-
 extension CGPoint {
     var data: [String: Any?] {
         let x1 = NSNumber(value: x.native)
@@ -76,12 +74,8 @@ extension CGPoint {
     }
 }
 
-
-
 extension Date {
     var rawValue: String {
         return ISO8601DateFormatter().string(from: self)
     }
 }
-
-

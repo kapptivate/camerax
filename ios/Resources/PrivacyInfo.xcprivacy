@@ -10,5 +10,7 @@
 	<array/>
 	<key>NSPrivacyTracking</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+    <string>Scan CNI or make a selfie</string>
 </dict>
 </plist>
