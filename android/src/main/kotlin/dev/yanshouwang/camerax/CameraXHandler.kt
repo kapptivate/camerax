@@ -3,15 +3,14 @@ package dev.yanshouwang.camerax
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
-import android.util.Size
 import android.view.Surface
 import androidx.annotation.IntDef
 import androidx.annotation.NonNull
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.mlkit.vision.MlKitAnalyzer
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -103,8 +102,8 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>?,
-        grantResults: IntArray?
+        permissions: Array<out String>,
+        grantResults: IntArray
     ): Boolean {
         return listener?.onRequestPermissionsResult(requestCode, permissions, grantResults) ?: false
     }
