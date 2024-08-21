@@ -126,19 +126,6 @@ class _CameraController implements CameraController {
     }
     id = hashCode;
 
-    if (cameraType == CameraType.barcode) {
-      // Create barcode stream controller.
-      initBarcodeStream();
-    }
-  }
-
-  void initBarcodeStream() {
-    // Create barcode stream controller.
-    barcodesController = StreamController.broadcast(
-      onListen: () => tryAnalyze(analyze_barcode),
-      onCancel: () => tryAnalyze(analyze_none),
-    );
-    // Listen event handler.
     subscription =
         event.receiveBroadcastStream().listen((data) => handleEvent(data));
   }
@@ -239,7 +226,7 @@ class _CameraController implements CameraController {
   @override
   Future<void> setFlashMode(FlashMode mode) async {
     try {
-      await method.invokeMethod('flash', mode.index);
+      await method.invokeMethod('torch', mode.index);
       _flashMode = mode;
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);

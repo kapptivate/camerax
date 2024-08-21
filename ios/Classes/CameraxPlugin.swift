@@ -89,8 +89,6 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
             analyzeNative(call, result)
         case "stop":
             stopNative(result)
-        case "flash":
-            flashModeNative(call, result)
         case "capture":
             captureNative(result)
         default:
@@ -316,12 +314,6 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
         captureDevice = nil
         textureId = nil
 
-        result(nil)
-    }
-
-    private func flashModeNative(_ call: FlutterMethodCall, _ result: FlutterResult) {
-        let rawFlashMode = call.arguments as! Int
-        flashMode = mapFlashMode(rawFlashMode)
         result(nil)
     }
 
