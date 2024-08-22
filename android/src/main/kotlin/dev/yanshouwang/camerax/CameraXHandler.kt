@@ -294,7 +294,6 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         val outputConfig = ImageCapture.OutputFileOptions.Builder(outputFile)
             .build()
         val cameraExecutor = ContextCompat.getMainExecutor(activity)
-        imageCapture.flashMode = flashMode
         imageCapture.takePicture(
             outputConfig,
             cameraExecutor,
