@@ -1,6 +1,8 @@
 package dev.yanshouwang.camerax
 
 import android.annotation.SuppressLint
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import io.flutter.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -42,6 +44,7 @@ class CameraXPlugin : FlutterPlugin, ActivityAware {
         onAttachedToActivity(binding)
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     @SuppressLint("UnsafeOptInUsageError")
     override fun onDetachedFromActivity() {
         Log.v("CameraXPlugin", "onDetachedFromActivity")
@@ -58,6 +61,7 @@ class CameraXPlugin : FlutterPlugin, ActivityAware {
         activity = null
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     override fun onDetachedFromActivityForConfigChanges() {
         Log.v("CameraXPlugin", "onDetachedFromActivityForConfigChanges")
         onDetachedFromActivity()

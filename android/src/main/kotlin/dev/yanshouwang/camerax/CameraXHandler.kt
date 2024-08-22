@@ -10,10 +10,12 @@ import android.graphics.Matrix
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.media.ExifInterface
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
 import android.view.Surface
 import androidx.annotation.IntDef
+import androidx.annotation.RequiresApi
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.CaptureRequestOptions
@@ -93,6 +95,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
     private var targetResolution = Size(720, 1280)
     private var targetRotation = PhotoRotation.ROTATION_UNSET
 
+    @RequiresApi(Build.VERSION_CODES.R)
     @ExperimentalGetImage
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -104,8 +107,22 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
             "stop" -> stopNative(result)
             "flash" -> flashModeNative(call, result)
             "capture" -> captureNative(result)
+            "flashTorchCapabilities" -> flashTorchCapabilities(call, result)
             else -> result.notImplemented()
         }
+    }
+
+    private fun flashTorchCapabilities(call: MethodCall, result: MethodChannel.Result) {
+        val isFlashAvailable = true // camera!!.cameraInfo.hasFlashUnit()
+
+        result.success(
+            mapOf(
+                "hasTorch" to isFlashAvailable,
+                "hasFlash" to isFlashAvailable,
+                "isTorchAvailable" to isFlashAvailable,
+                "isFlashAvailable" to isFlashAvailable
+            )
+        )
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -151,6 +168,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE)
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     @ExperimentalGetImage
     private fun startNative(call: MethodCall, result: MethodChannel.Result) {
         try {
@@ -190,6 +208,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     @SuppressLint("RestrictedApi", "UnsafeOptInUsageError")
     private fun prepareCapture(result: MethodChannel.Result, camSelector: CameraSelector) {
         execute(result, camSelector) { cameraProvider, selector, executor ->
@@ -363,6 +382,9 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
                 Camera2CameraControl.from(imageCapture.camera!!.cameraControl).captureRequestOptions = builder.build()
             }
         }
+
+        val intState = if (state) 1 else 0
+        sink?.success(mapOf("name" to "torchState", "data" to intState))
         result.success(null)
     }
 
@@ -380,6 +402,7 @@ class CameraXHandler(private val activity: Activity, private val textureRegistry
         imageCapture.flashMode = flashMode
 
         Log.v("CameraXHandler", "imageCapture.flashMode=${imageCapture.flashMode}")
+        sink?.success(mapOf("name" to "flashState", "data" to call.arguments))
         result.success(null)
     }
 

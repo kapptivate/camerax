@@ -12,13 +12,26 @@ class CaptureView extends StatefulWidget {
 
 class _CaptureViewState extends State<CaptureView> {
   late final CameraController cameraController;
-  final List<FlashModeIcon> flashModeIcons = [
-    const FlashModeIcon(FlashMode.off, Icons.flash_off_rounded),
-    const FlashModeIcon(FlashMode.on, Icons.flash_on_rounded),
-    const FlashModeIcon(FlashMode.auto, Icons.flash_auto_rounded),
-  ];
 
-  late int flashModeIndex;
+  bool showTorchButton = false;
+  bool showFlashButton = false;
+
+  FlashState flashState = FlashState.off;
+  TorchState torchState = TorchState.off;
+
+  void _handleTorchAvailable() {
+    setState(() {
+      showTorchButton = cameraController.hasTorch.value &&
+          cameraController.isTorchAvailable.value;
+    });
+  }
+
+  void _handleFlashAvailable() {
+    setState(() {
+      showFlashButton = cameraController.hasFlash.value &&
+          cameraController.isFlashAvailable.value;
+    });
+  }
 
   @override
   void initState() {
@@ -31,8 +44,26 @@ class _CaptureViewState extends State<CaptureView> {
   }
 
   void start() async {
-    flashModeIndex = _currentFlashModeIndex();
     await cameraController.startAsync();
+    cameraController.isTorchAvailable.addListener(_handleTorchAvailable);
+    cameraController.hasTorch.addListener(_handleTorchAvailable);
+    _handleTorchAvailable();
+
+    cameraController.isFlashAvailable.addListener(_handleFlashAvailable);
+    cameraController.hasFlash.addListener(_handleFlashAvailable);
+    _handleFlashAvailable();
+
+    cameraController.flashState.addListener(() {
+      setState(() {
+        flashState = cameraController.flashState.value;
+      });
+    });
+
+    cameraController.torchState.addListener(() {
+      setState(() {
+        torchState = cameraController.torchState.value;
+      });
+    });
   }
 
   @override
@@ -54,18 +85,83 @@ class _CaptureViewState extends State<CaptureView> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ElevatedButton.icon(
-                      icon: Icon(Icons.camera),
-                      onPressed: () => _takePicture(context),
-                      label: Text('Capture'),
-                    ),
-                    SizedBox(height: 16.0),
-                    TextButton.icon(
-                      label: Text('Flash ${cameraController.flashMode.name}'),
-                      onPressed: () => _switchFlashMode(),
-                      icon: Icon(
-                        flashModeIcons[flashModeIndex].iconData,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          icon: Icon(Icons.camera),
+                          onPressed: () => _takePicture(context),
+                          label: Text('Capture'),
+                        ),
+                        Container(
+                          alignment: Alignment.bottomCenter,
+                          child: IconButton(
+                            icon: Icon(
+                                !showTorchButton
+                                    ? Icons.flashlight_off_outlined
+                                    : switch (torchState) {
+                                        TorchState.off => Icons.flashlight_off,
+                                        TorchState.on => Icons.flashlight_on,
+                                        TorchState.auto =>
+                                          Icons.flashlight_on_outlined,
+                                      },
+                                color: torchState == TorchState.off
+                                    ? Colors.grey
+                                    : Colors.white),
+                            iconSize: 32.0,
+                            onPressed: () {
+                              if (!showTorchButton) {
+                                return;
+                              }
+                              switch (cameraController.torchState.value) {
+                                case TorchState.off:
+                                  cameraController.setTorchMode(TorchState.on);
+                                  break;
+                                case TorchState.on:
+                                  cameraController
+                                      .setTorchMode(TorchState.auto);
+                                  break;
+                                case TorchState.auto:
+                                  cameraController.setTorchMode(TorchState.off);
+                                  break;
+                              }
+                            },
+                          ),
+                        ),
+                        Container(
+                          alignment: Alignment.bottomCenter,
+                          child: IconButton(
+                            icon: Icon(
+                                !showFlashButton
+                                    ? Icons.flash_off_outlined
+                                    : switch (flashState) {
+                                        FlashState.off => Icons.flash_off,
+                                        FlashState.on => Icons.flash_on,
+                                        FlashState.auto => Icons.flash_auto,
+                                      },
+                                color: flashState == FlashState.off
+                                    ? Colors.grey
+                                    : Colors.white),
+                            iconSize: 32.0,
+                            onPressed: () {
+                              if (!showFlashButton) {
+                                return;
+                              }
+                              switch (cameraController.flashState.value) {
+                                case FlashState.off:
+                                  cameraController.setFlashMode(FlashMode.on);
+                                  break;
+                                case FlashState.on:
+                                  cameraController.setFlashMode(FlashMode.auto);
+                                  break;
+                                case FlashState.auto:
+                                  cameraController.setFlashMode(FlashMode.off);
+                                  break;
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -104,29 +200,4 @@ class _CaptureViewState extends State<CaptureView> {
     cameraController.dispose();
     super.dispose();
   }
-
-  Future<void> _switchFlashMode() async {
-    var nextModeIndex = _currentFlashModeIndex() + 1;
-    flashModeIndex =
-        (nextModeIndex) >= flashModeIcons.length ? 0 : nextModeIndex;
-    await cameraController
-        .setFlashMode(flashModeIcons[flashModeIndex].flashMode);
-    setState(() {
-      print('new flash index: $flashModeIndex');
-    });
-  }
-
-  int _currentFlashModeIndex() {
-    var currentMode = cameraController.flashMode;
-    var index = flashModeIcons.indexWhere((e) => e.flashMode == currentMode);
-    print('$currentMode is on $index');
-    return index;
-  }
-}
-
-class FlashModeIcon {
-  final FlashMode flashMode;
-  final IconData iconData;
-
-  const FlashModeIcon(this.flashMode, this.iconData);
 }

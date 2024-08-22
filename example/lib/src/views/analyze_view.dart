@@ -6,20 +6,62 @@ class AnalyzeView extends StatefulWidget {
   _AnalyzeViewState createState() => _AnalyzeViewState();
 }
 
-class _AnalyzeViewState extends State<AnalyzeView> with SingleTickerProviderStateMixin {
+class _AnalyzeViewState extends State<AnalyzeView>
+    with SingleTickerProviderStateMixin {
   late CameraController cameraController;
   late AnimationController animationConrtroller;
   late Animation<double> offsetAnimation;
   late Animation<double> opacityAnimation;
+  bool showTorchButton = false;
+  bool showFlashButton = false;
+
+  FlashState flashState = FlashState.off;
+  TorchState torchState = TorchState.off;
+
+  void _handleTorchAvailable() {
+    setState(() {
+      showTorchButton = cameraController.hasTorch.value &&
+          cameraController.isTorchAvailable.value;
+    });
+  }
+
+  void _handleFlashAvailable() {
+    setState(() {
+      showFlashButton = cameraController.hasFlash.value &&
+          cameraController.isFlashAvailable.value;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     cameraController = CameraController(cameraType: CameraType.barcode);
-    animationConrtroller = AnimationController(duration: Duration(seconds: 2), vsync: this);
+    animationConrtroller =
+        AnimationController(duration: Duration(seconds: 2), vsync: this);
     offsetAnimation = Tween(begin: 0.2, end: 0.8).animate(animationConrtroller);
-    opacityAnimation = CurvedAnimation(parent: animationConrtroller, curve: OpacityCurve());
+    opacityAnimation =
+        CurvedAnimation(parent: animationConrtroller, curve: OpacityCurve());
     animationConrtroller.repeat();
+
+    cameraController.isTorchAvailable.addListener(_handleTorchAvailable);
+    cameraController.hasTorch.addListener(_handleTorchAvailable);
+    _handleTorchAvailable();
+
+    cameraController.isFlashAvailable.addListener(_handleFlashAvailable);
+    cameraController.hasFlash.addListener(_handleFlashAvailable);
+    _handleFlashAvailable();
+
+    cameraController.flashState.addListener(() {
+      setState(() {
+        flashState = cameraController.flashState.value;
+      });
+    });
+
+    cameraController.torchState.addListener(() {
+      setState(() {
+        torchState = cameraController.torchState.value;
+      });
+    });
 
     start();
   }
@@ -46,15 +88,68 @@ class _AnalyzeViewState extends State<AnalyzeView> with SingleTickerProviderStat
             alignment: Alignment.bottomCenter,
             margin: EdgeInsets.only(bottom: 80.0),
             child: IconButton(
-              icon: ValueListenableBuilder(
-                valueListenable: cameraController.torchState,
-                builder: (context, state, child) {
-                  final color = state == TorchState.off ? Colors.grey : Colors.white;
-                  return Icon(Icons.bolt, color: color);
-                },
-              ),
+              icon: Icon(
+                  !showTorchButton
+                      ? Icons.flashlight_off_outlined
+                      : switch (torchState) {
+                          TorchState.off => Icons.flashlight_off,
+                          TorchState.on => Icons.flashlight_on,
+                          TorchState.auto => Icons.flashlight_on_outlined,
+                        },
+                  color: torchState == TorchState.off
+                      ? Colors.grey
+                      : Colors.white),
               iconSize: 32.0,
-              onPressed: () => cameraController.torch(),
+              onPressed: () {
+                if (!showTorchButton) {
+                  return;
+                }
+                switch (cameraController.torchState.value) {
+                  case TorchState.off:
+                    cameraController.torchState.value = TorchState.on;
+                    break;
+                  case TorchState.on:
+                    cameraController.torchState.value = TorchState.auto;
+                    break;
+                  case TorchState.auto:
+                    cameraController.torchState.value = TorchState.off;
+                    break;
+                }
+              },
+            ),
+          ),
+          Container(
+            alignment: Alignment.bottomCenter,
+            margin: EdgeInsets.only(bottom: 80.0),
+            child: IconButton(
+              icon: Icon(
+                  !showFlashButton
+                      ? Icons.flash_off_outlined
+                      : switch (flashState) {
+                          FlashState.off => Icons.flash_off,
+                          FlashState.on => Icons.flash_on,
+                          FlashState.auto => Icons.flash_auto,
+                        },
+                  color: flashState == FlashState.off
+                      ? Colors.grey
+                      : Colors.white),
+              iconSize: 32.0,
+              onPressed: () {
+                if (!showFlashButton) {
+                  return;
+                }
+                switch (cameraController.flashState.value) {
+                  case FlashState.off:
+                    cameraController.flashState.value = FlashState.on;
+                    break;
+                  case FlashState.on:
+                    cameraController.flashState.value = FlashState.auto;
+                    break;
+                  case FlashState.auto:
+                    cameraController.flashState.value = FlashState.off;
+                    break;
+                }
+              },
             ),
           ),
         ],
@@ -101,7 +196,8 @@ class AnimatedLine extends AnimatedWidget {
   final Animation offsetAnimation;
   final Animation opacityAnimation;
 
-  AnimatedLine({Key? key, required this.offsetAnimation, required this.opacityAnimation})
+  AnimatedLine(
+      {Key? key, required this.offsetAnimation, required this.opacityAnimation})
       : super(key: key, listenable: offsetAnimation);
 
   @override

@@ -25,10 +25,21 @@ abstract class CameraController {
   /// Torch state of the camera.
   ValueNotifier<TorchState> get torchState;
 
+  /// Flash state of the camera.
+  ValueNotifier<FlashState> get flashState;
+
+  /// Availability of torch and flash (can be changed during runtime, e.g. when switching cameras or when the device is overheating).
+  ValueNotifier<bool> get isTorchAvailable;
+  ValueNotifier<bool> get isFlashAvailable;
+
+  /// Whether the camera has a flash.
+  ValueNotifier<bool> get hasFlash;
+
+  /// Whether the camera has a torch.
+  ValueNotifier<bool> get hasTorch;
+
   /// A stream of barcodes.
   Stream<Barcode>? get barcodes;
-
-  FlashMode get flashMode;
 
   /// Create a [CameraController].
   ///
@@ -41,19 +52,18 @@ abstract class CameraController {
     ResolutionPreset resolutionPreset = ResolutionPreset.max,
     CaptureMode captureMode = CaptureMode.maxQuality,
     PhotoRotation rotation = PhotoRotation.rotationUnset,
-    FlashMode? flashMode,
   }) =>
-      _CameraController(facing, cameraType, resolutionPreset, rotation,
-          captureMode, flashMode);
+      _CameraController(
+          facing, cameraType, resolutionPreset, rotation, captureMode);
 
   /// Start the camera asynchronously.
   Future<void> startAsync();
 
   /// Switch the torch's state.
-  void torch();
+  Future<void> setTorchMode(TorchState mode);
 
-  /// Switch the torch's state.
-  void setTorch(TorchState _torchState);
+  /// Switch the flash's state.
+  Future<void> setFlashMode(FlashMode mode);
 
   /// Release the resources of the camera.
   void dispose();
@@ -61,8 +71,6 @@ abstract class CameraController {
   Future<bool> isTakingPicture();
 
   Future<String> takePicture();
-
-  Future<void> setFlashMode(FlashMode mode);
 }
 
 class _CameraController implements CameraController {
@@ -82,9 +90,6 @@ class _CameraController implements CameraController {
   static const authorized = 1;
   static const denied = 2;
 
-  static const analyze_none = 0;
-  static const analyze_barcode = 1;
-
   static int? id;
   static StreamSubscription? subscription;
 
@@ -93,17 +98,27 @@ class _CameraController implements CameraController {
   final CaptureMode captureMode;
   final ResolutionPreset resolutionPreset;
   final PhotoRotation rotation;
-  FlashMode? _flashMode;
-
-  @override
-  FlashMode get flashMode => _flashMode ?? FlashMode.auto;
 
   @override
   final ValueNotifier<CameraArgs?> args;
   @override
-  final ValueNotifier<TorchState> torchState;
+  final ValueNotifier<TorchState> torchState = ValueNotifier(TorchState.off);
 
-  bool torchable;
+  @override
+  final ValueNotifier<FlashState> flashState = ValueNotifier(FlashState.off);
+
+  @override
+  ValueNotifier<bool> isTorchAvailable = ValueNotifier(false);
+
+  @override
+  ValueNotifier<bool> isFlashAvailable = ValueNotifier(false);
+
+  @override
+  ValueNotifier<bool> hasFlash = ValueNotifier(false);
+
+  @override
+  ValueNotifier<bool> hasTorch = ValueNotifier(false);
+
   bool _isTakingPicture = false;
   StreamController<Barcode>? barcodesController;
 
@@ -116,10 +131,7 @@ class _CameraController implements CameraController {
     this.resolutionPreset,
     this.rotation,
     this.captureMode,
-    this._flashMode,
-  )   : args = ValueNotifier(null),
-        torchState = ValueNotifier(TorchState.off),
-        torchable = false {
+  ) : args = ValueNotifier(null) {
     // In case new instance before dispose.
     if (id != null) {
       stop();
@@ -130,6 +142,14 @@ class _CameraController implements CameraController {
         event.receiveBroadcastStream().listen((data) => handleEvent(data));
   }
 
+  Future<void> initFlashTorchCapabilities() async {
+    final capabilities = await method.invokeMethod('flashTorchCapabilities');
+    hasFlash.value = capabilities['hasFlash'];
+    hasTorch.value = capabilities['hasTorch'];
+    isFlashAvailable.value = capabilities['isFlashAvailable'];
+    isTorchAvailable.value = capabilities['isTorchAvailable'];
+  }
+
   void handleEvent(Map<dynamic, dynamic> event) {
     final name = event['name'];
     final data = event['data'];
@@ -138,9 +158,15 @@ class _CameraController implements CameraController {
         final state = TorchState.values[data];
         torchState.value = state;
         break;
-      case 'barcode':
-        final barcode = Barcode.fromNative(data);
-        barcodesController?.add(barcode);
+      case 'flashState':
+        final state = FlashState.values[data];
+        flashState.value = state;
+        break;
+      case 'flashAvailable':
+        isFlashAvailable.value = data;
+        break;
+      case 'torchAvailable':
+        isTorchAvailable.value = data;
         break;
       default:
         throw UnimplementedError();
@@ -175,32 +201,36 @@ class _CameraController implements CameraController {
         CAMERA_RESOLUTION: resolutionPreset.index,
         CAMERA_PHOTO_ROTATION: rotation.index,
         CAMERA_CAPTURE_MODE: captureMode.index,
-        CAMERA_FLASH_MODE: flashMode.index,
+        CAMERA_FLASH_MODE: FlashMode.off.index,
       });
       final textureId = answer?['textureId'];
       final size = toSize(answer?['size']);
       args.value = CameraArgs(textureId, size);
-      torchable = answer?['torchable'];
+
+      initFlashTorchCapabilities();
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
     }
   }
 
   @override
-  void torch() {
-    ensure('torch');
-    if (!torchable) {
-      return;
+  Future<void> setTorchMode(TorchState mode) async {
+    try {
+      ensure('torch');
+      await method.invokeMethod('torch', mode.index);
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
     }
-    var state =
-        torchState.value == TorchState.off ? TorchState.on : TorchState.off;
-    method.invokeMethod('torch', state.index);
   }
 
-  void setTorch(TorchState _torchState) {
-    ensure('torch');
-    print('setTorch $_torchState');
-    method.invokeMethod('torch', _torchState.index);
+  @override
+  Future<void> setFlashMode(FlashMode mode) async {
+    try {
+      ensure('flash');
+      await method.invokeMethod('flash', mode.index);
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
   }
 
   @override
@@ -221,16 +251,6 @@ class _CameraController implements CameraController {
         'CameraController.$name called after CameraController.dispose\n'
         'CameraController methods should not be used after calling dispose.';
     assert(hashCode == id, message);
-  }
-
-  @override
-  Future<void> setFlashMode(FlashMode mode) async {
-    try {
-      await method.invokeMethod('torch', mode.index);
-      _flashMode = mode;
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
   }
 
   @override

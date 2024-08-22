@@ -70,7 +70,7 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
         self.registry = registry
         analyzeMode = 0
         analyzing = false
-        flashMode = .auto
+        flashMode = .off
         videoOrientation = .portrait
         super.init()
     }
@@ -91,9 +91,24 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
             stopNative(result)
         case "capture":
             captureNative(result)
+        case "flash":
+            flashNative(call, result)
+        case "flashTorchCapabilities":
+            flashTorchCapabilities(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    // return object with torch and flash capabilities
+    public func flashTorchCapabilities(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let torch = captureDevice.hasTorch
+        let flash = captureDevice.hasFlash
+
+        let isTorchAvailable = captureDevice.isTorchAvailable
+        let isFlashAvailable = captureDevice.isFlashAvailable
+
+        result(["hasTorch": torch, "hasFlash": flash, "isTorchAvailable": isTorchAvailable, "isFlashAvailable": isFlashAvailable])
     }
 
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
@@ -279,17 +294,29 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
             result(FlutterError(code: "Capture device unavailable", message: "Unable to initialize a capture device", details: nil))
         }
         captureDevice.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.torchMode), options: .new, context: nil)
+        captureDevice.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.isFlashAvailable), options: .new, context: nil)
+        captureDevice.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.isTorchAvailable), options: .new, context: nil)
+
     }
 
     func torchNative(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         do {
             try captureDevice.lockForConfiguration()
-            captureDevice.torchMode = call.arguments as! Int == 1 ? .on : .off
+            captureDevice.torchMode = mapTorchMode(call.arguments as! Int)
             captureDevice.unlockForConfiguration()
             result(nil)
         } catch {
             error.throwNative(result)
         }
+    }
+    func flashNative(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        flashMode = mapFlashMode(call.arguments as! Int)
+        
+        let state = call.arguments as! Int
+        let event: [String: Any?] = ["name": "flashState", "data": state]
+        sink?(event)
+        
+        result(nil)
     }
 
     func analyzeNative(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
@@ -324,6 +351,15 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
         default: return .auto
         }
     }
+    
+    private func mapTorchMode(_ rawMode: Int) -> AVCaptureDevice.TorchMode {
+        switch (rawMode) {
+        case 0: return .off
+        case 1: return .on
+        default: return .auto
+        }
+    }
+
 
     private func mapResolutionPreset(_ rawMode: Int) -> AVCaptureSession.Preset {
         switch (ResolutionPreset(fromRawValue: rawMode)) {
@@ -382,6 +418,14 @@ public class CameraXPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, Flutt
             // off = 0; on = 1; auto = 2;
             let state = change?[.newKey] as? Int
             let event: [String: Any?] = ["name": "torchState", "data": state]
+            sink?(event)
+        case "isFlashAvailable":
+            let state = change?[.newKey] as? Bool
+            let event: [String: Any?] = ["name": "flashAvailable", "data": state]
+            sink?(event)
+        case "isTorchAvailable":
+            let state = change?[.newKey] as? Bool
+            let event: [String: Any?] = ["name": "torchAvailable", "data": state]
             sink?(event)
         default:
             break
