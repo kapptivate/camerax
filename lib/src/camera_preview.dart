@@ -9,7 +9,7 @@ class CameraPreview extends StatelessWidget {
   final CameraController controller;
 
   /// Create a [CameraPreview] with a [controller], the [controller] must has been initialized.
-  CameraPreview(this.controller);
+  CameraPreview(this.controller, {super.key});
 
   @override
   Widget build(BuildContext context) {
